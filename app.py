@@ -139,6 +139,17 @@ def send_email_sync(config, recipient, html_content, plain_text, attachments_dir
         html_personal = render_template_vars(html_content, recipient) if html_content else ''
         plain_personal = render_template_vars(plain_text, recipient) if plain_text else ''
 
+        # Generate plain text from HTML if only HTML is provided
+        if html_personal and not plain_personal:
+            import re
+            # Remove style tags and content
+            text = re.sub(r'<style[^>]*>.*?</style>', '', html_personal, flags=re.DOTALL)
+            # Remove HTML tags
+            text = re.sub(r'<[^>]+>', '', text)
+            # Replace common entities
+            text = text.replace('&nbsp;', ' ').replace('<', '<').replace('>', '>').replace('&', '&')
+            plain_personal = text.strip()
+
         if html_personal and plain_personal:
             alternative.attach(MIMEText(plain_personal, 'plain', 'utf-8'))
             alternative.attach(MIMEText(html_personal, 'html', 'utf-8'))

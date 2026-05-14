@@ -41,3 +41,7 @@ Desktop.ini
 
 # Static files (if generated)
 # static/
+
+# Node.js
+node_modules/
+pnpm-lock.yaml

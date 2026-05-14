@@ -132,7 +132,12 @@
           <td class="px-5 py-3 text-slate-500 font-mono text-xs">#{{ camp.id }}</td>
           <td class="px-5 py-3 text-slate-100 font-medium truncate max-w-xs">{{ camp.subject or '(no subject)' }}</td>
           <td class="px-5 py-3">
-            {% set st = camp.status or ('done' if camp.end_time else 'running') %}
+            {% set st = camp.status or '' %}
+            {% if camp.end_time and st != 'cancelled' %}
+              {% set st = 'done' %}
+            {% elif not st %}
+              {% set st = 'running' %}
+            {% endif %}
             {% if st == 'running' %}
               <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-brand-500/15 text-brand-300 text-xs font-medium">
                 <span class="w-1.5 h-1.5 rounded-full bg-brand-400 animate-pulse"></span> Running
@@ -152,7 +157,13 @@
               <a href="/campaigns/{{ camp.id }}" class="p-1.5 rounded-lg hover:bg-slate-700/60 text-slate-400 hover:text-slate-100" title="View details">
                 <i data-lucide="eye" class="w-4 h-4"></i>
               </a>
-              {% if (camp.status or '') == 'running' %}
+              {% set st = camp.status or '' %}
+              {% if camp.end_time and st != 'cancelled' %}
+                {% set st = 'done' %}
+              {% elif not st %}
+                {% set st = 'running' %}
+              {% endif %}
+              {% if st == 'running' %}
               <a href="/progress/{{ camp.id }}" class="p-1.5 rounded-lg hover:bg-slate-700/60 text-brand-400" title="Live progress">
                 <i data-lucide="activity" class="w-4 h-4"></i>
               </a>
