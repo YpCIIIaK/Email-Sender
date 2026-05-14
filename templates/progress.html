@@ -1,84 +1,137 @@
 {% extends "base.html" %}
+{% block title %}Sending · Mailer Pro{% endblock %}
 {% block content %}
-<h1>Sending Progress</h1>
+<div x-data="progressApp({{ campaign_id }})" x-init="init()">
+  <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-8">
+    <div>
+      <p class="text-xs uppercase tracking-wider text-slate-400 font-medium">Campaign #{{ campaign_id }}</p>
+      <h1 class="text-2xl md:text-3xl font-bold text-white tracking-tight" x-text="subject || 'Sending...'"></h1>
+    </div>
+    <div class="flex items-center gap-2">
+      <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium"
+        :class="{
+          'bg-brand-500/15 text-brand-300': status==='running',
+          'bg-emerald-500/15 text-emerald-300': status==='done',
+          'bg-amber-500/15 text-amber-300': status==='cancelled'
+        }">
+        <span class="w-1.5 h-1.5 rounded-full"
+          :class="{ 'bg-brand-400 animate-pulse': status==='running', 'bg-emerald-400': status==='done', 'bg-amber-400': status==='cancelled' }"></span>
+        <span x-text="status==='running'?'Running':(status==='cancelled'?'Cancelled':'Done')"></span>
+      </span>
+      <button type="button" @click="cancel()" x-show="status==='running'"
+        class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 text-sm font-medium border border-rose-500/20">
+        <i data-lucide="square" class="w-4 h-4"></i> Cancel
+      </button>
+      <a href="/" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-800/80 hover:bg-slate-800 text-slate-200 text-sm font-medium border border-slate-700/60">
+        <i data-lucide="arrow-left" class="w-4 h-4"></i> Dashboard
+      </a>
+    </div>
+  </div>
 
-<div id="stats">
-    <p>Total: <span id="total">0</span> | Sent: <span id="successful" style="color:green;">0</span> | Failed: <span id="failed" style="color:red;">0</span></p>
-    <p id="status">Sending...</p>
+  <!-- Progress -->
+  <div class="rounded-2xl bg-slate-900/60 border border-slate-800/80 p-6 mb-6">
+    <div class="flex items-center justify-between mb-3">
+      <div>
+        <p class="text-xs uppercase tracking-wider text-slate-400 font-medium">Progress</p>
+        <p class="text-2xl font-bold text-white mt-1">
+          <span x-text="processed"></span> <span class="text-slate-500">/ </span><span x-text="total"></span>
+        </p>
+      </div>
+      <p class="text-3xl font-bold text-brand-300" x-text="percent + '%'"></p>
+    </div>
+    <div class="h-3 rounded-full bg-slate-800 overflow-hidden">
+      <div class="h-full bg-gradient-to-r from-brand-600 to-brand-400 transition-all duration-500" :style="'width:' + percent + '%'"></div>
+    </div>
+    <div class="grid grid-cols-3 gap-4 mt-6">
+      <div class="rounded-xl bg-slate-800/40 p-4">
+        <p class="text-xs text-slate-400 font-medium">Total</p>
+        <p class="text-xl font-bold text-white mt-1" x-text="total"></p>
+      </div>
+      <div class="rounded-xl bg-emerald-500/10 p-4 border border-emerald-500/20">
+        <p class="text-xs text-emerald-400 font-medium">Sent</p>
+        <p class="text-xl font-bold text-emerald-300 mt-1" x-text="successful"></p>
+      </div>
+      <div class="rounded-xl bg-rose-500/10 p-4 border border-rose-500/20">
+        <p class="text-xs text-rose-400 font-medium">Failed</p>
+        <p class="text-xl font-bold text-rose-300 mt-1" x-text="failed"></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Log table -->
+  <div class="rounded-2xl bg-slate-900/60 border border-slate-800/80 overflow-hidden">
+    <div class="px-5 py-4 border-b border-slate-800/80 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+      <h2 class="font-semibold text-white">Activity log</h2>
+      <div class="flex items-center gap-2">
+        <button @click="filter='all'" :class="filter==='all'?'bg-slate-700 text-white':'text-slate-400 hover:text-slate-200'" class="px-3 py-1.5 rounded-lg text-xs font-medium">All</button>
+        <button @click="filter='sent'" :class="filter==='sent'?'bg-emerald-500/20 text-emerald-300':'text-slate-400 hover:text-slate-200'" class="px-3 py-1.5 rounded-lg text-xs font-medium">Sent</button>
+        <button @click="filter='failed'" :class="filter==='failed'?'bg-rose-500/20 text-rose-300':'text-slate-400 hover:text-slate-200'" class="px-3 py-1.5 rounded-lg text-xs font-medium">Failed</button>
+      </div>
+    </div>
+    <div class="overflow-x-auto scrollbar-thin max-h-[60vh] overflow-y-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-900/80 text-slate-400 text-xs uppercase tracking-wider sticky top-0">
+          <tr>
+            <th class="px-5 py-3 text-left font-medium">#</th>
+            <th class="px-5 py-3 text-left font-medium">Email</th>
+            <th class="px-5 py-3 text-left font-medium">Status</th>
+            <th class="px-5 py-3 text-left font-medium">Time</th>
+            <th class="px-5 py-3 text-left font-medium">Error</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-800/80">
+          <template x-for="(log, i) in filteredLogs()" :key="i">
+            <tr class="hover:bg-slate-800/30">
+              <td class="px-5 py-2.5 text-slate-500 font-mono text-xs" x-text="i+1"></td>
+              <td class="px-5 py-2.5 text-slate-200 font-mono text-xs" x-text="log.email"></td>
+              <td class="px-5 py-2.5">
+                <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium"
+                  :class="log.status==='sent'?'bg-emerald-500/15 text-emerald-300':'bg-rose-500/15 text-rose-300'">
+                  <i :data-lucide="log.status==='sent'?'check':'x'" class="w-3 h-3"></i>
+                  <span x-text="log.status"></span>
+                </span>
+              </td>
+              <td class="px-5 py-2.5 text-slate-400 text-xs whitespace-nowrap" x-text="log.sent_at"></td>
+              <td class="px-5 py-2.5 text-rose-400 text-xs truncate max-w-md" x-text="log.error || ''"></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+      <div x-show="!logs.length" class="px-5 py-16 text-center text-slate-500 text-sm">
+        <i data-lucide="loader-2" class="w-6 h-6 mx-auto animate-spin mb-2"></i>
+        Waiting for first send...
+      </div>
+    </div>
+  </div>
 </div>
 
-<table id="log-table">
-    <thead>
-        <tr>
-            <th>#</th>
-            <th>Email</th>
-            <th>Status</th>
-            <th>Time</th>
-            <th>Error</th>
-        </tr>
-    </thead>
-    <tbody id="log-body">
-    </tbody>
-</table>
-
-<script type="text/javascript">
-var campaignId = {{ campaign_id }};
-var intervalId = null;
-
-function updateProgress() {
-    fetch("/api/progress/" + campaignId)
-        .then(function(r) { 
-            if (!r.ok) {
-                throw new Error('Network response was not ok');
-            }
-            return r.json(); 
-        })
-        .then(function(data) {
-            document.getElementById("total").textContent = data.total;
-            document.getElementById("successful").textContent = data.successful;
-            document.getElementById("failed").textContent = data.failed;
-            
-            var tbody = document.getElementById("log-body");
-            tbody.innerHTML = "";
-            for (var i = 0; i < data.logs.length; i++) {
-                var log = data.logs[i];
-                var tr = document.createElement("tr");
-                var td1 = document.createElement("td");
-                td1.textContent = i + 1;
-                var td2 = document.createElement("td");
-                td2.textContent = log.email;
-                var td3 = document.createElement("td");
-                td3.textContent = log.status;
-                td3.style.color = log.status === "sent" ? "green" : "red";
-                var td4 = document.createElement("td");
-                td4.textContent = log.sent_at;
-                var td5 = document.createElement("td");
-                td5.textContent = log.error || "";
-                tr.appendChild(td1);
-                tr.appendChild(td2);
-                tr.appendChild(td3);
-                tr.appendChild(td4);
-                tr.appendChild(td5);
-                tbody.appendChild(tr);
-            }
-            
-            if (data.is_done) {
-                document.getElementById("status").textContent = "Done!";
-                document.getElementById("status").style.color = "green";
-                if (intervalId) {
-                    clearInterval(intervalId);
-                }
-            } else {
-                document.getElementById("status").textContent = "Sending...";
-            }
-        })
-        .catch(function(error) {
-            console.error('Error fetching progress:', error);
-            document.getElementById("status").textContent = "Error loading progress...";
-        });
-}
-
-updateProgress();
-intervalId = setInterval(updateProgress, 2000);
+<script>
+  function progressApp(id) {
+    return {
+      id, subject:'', status:'running',
+      total:0, successful:0, failed:0, processed:0, percent:0,
+      logs:[], filter:'all', timer:null,
+      init() { this.tick(); this.timer = setInterval(()=>this.tick(), 2000); this.$nextTick(()=>lucide.createIcons()); },
+      filteredLogs() { return this.filter==='all' ? this.logs : this.logs.filter(l=>l.status===this.filter); },
+      async tick() {
+        try {
+          const r = await fetch('/api/progress/' + this.id);
+          if (!r.ok) return;
+          const d = await r.json();
+          this.subject = d.subject; this.status = d.status;
+          this.total = d.total; this.successful = d.successful; this.failed = d.failed;
+          this.processed = d.processed; this.logs = d.logs;
+          this.percent = this.total ? Math.round((this.processed / this.total) * 100) : 0;
+          this.$nextTick(()=>lucide.createIcons());
+          if (d.is_done) { clearInterval(this.timer); }
+        } catch(e) { console.error(e); }
+      },
+      async cancel() {
+        if (!confirm('Cancel this campaign? Remaining recipients will be skipped.')) return;
+        await fetch('/api/cancel/' + this.id, { method: 'POST' });
+        toast('Cancellation requested', 'warn');
+      }
+    }
+  }
 </script>
 {% endblock %}

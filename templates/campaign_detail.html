@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Campaign #{{ camp.id }} · Mailer Pro{% endblock %}
+{% block content %}
+<div class="flex items-center gap-2 mb-3">
+  <a href="/" class="text-sm text-slate-400 hover:text-slate-200 inline-flex items-center gap-1">
+    <i data-lucide="arrow-left" class="w-4 h-4"></i> Back to dashboard
+  </a>
+</div>
+
+<div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-8">
+  <div>
+    <p class="text-xs uppercase tracking-wider text-slate-400 font-medium">Campaign #{{ camp.id }}</p>
+    <h1 class="text-2xl md:text-3xl font-bold text-white tracking-tight">{{ camp.subject or '(no subject)' }}</h1>
+    <p class="text-sm text-slate-400 mt-1">Started {{ camp.start_time }} {% if camp.end_time %}· ended {{ camp.end_time }}{% endif %}</p>
+  </div>
+  {% set st = camp.status or ('done' if camp.end_time else 'running') %}
+  <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium
+    {% if st == 'running' %}bg-brand-500/15 text-brand-300
+    {% elif st == 'cancelled' %}bg-amber-500/15 text-amber-300
+    {% else %}bg-emerald-500/15 text-emerald-300{% endif %}">
+    <span class="w-1.5 h-1.5 rounded-full
+      {% if st == 'running' %}bg-brand-400 animate-pulse
+      {% elif st == 'cancelled' %}bg-amber-400
+      {% else %}bg-emerald-400{% endif %}"></span>
+    {{ st|capitalize }}
+  </span>
+</div>
+
+<div class="grid grid-cols-3 gap-4 mb-6">
+  <div class="rounded-xl bg-slate-900/60 border border-slate-800/80 p-5">
+    <p class="text-xs text-slate-400 font-medium">Total</p>
+    <p class="text-2xl font-bold text-white mt-1">{{ camp.total }}</p>
+  </div>
+  <div class="rounded-xl bg-emerald-500/10 border border-emerald-500/20 p-5">
+    <p class="text-xs text-emerald-400 font-medium">Sent</p>
+    <p class="text-2xl font-bold text-emerald-300 mt-1">{{ camp.successful }}</p>
+  </div>
+  <div class="rounded-xl bg-rose-500/10 border border-rose-500/20 p-5">
+    <p class="text-xs text-rose-400 font-medium">Failed</p>
+    <p class="text-2xl font-bold text-rose-300 mt-1">{{ camp.failed }}</p>
+  </div>
+</div>
+
+<div class="rounded-2xl bg-slate-900/60 border border-slate-800/80 overflow-hidden"
+     x-data="{ q:'', f:'all' }">
+  <div class="px-5 py-4 border-b border-slate-800/80 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+    <h2 class="font-semibold text-white">Recipients log</h2>
+    <div class="flex items-center gap-2">
+      <div class="relative">
+        <i data-lucide="search" class="w-4 h-4 absolute left-3 top-2.5 text-slate-500"></i>
+        <input x-model="q" placeholder="Search email..." class="pl-9 pr-3 py-2 rounded-lg bg-slate-800/60 border border-slate-700/60 focus:border-brand-500 outline-none text-sm w-56">
+      </div>
+      <button @click="f='all'" :class="f==='all'?'bg-slate-700 text-white':'text-slate-400'" class="px-3 py-1.5 rounded-lg text-xs font-medium">All</button>
+      <button @click="f='sent'" :class="f==='sent'?'bg-emerald-500/20 text-emerald-300':'text-slate-400'" class="px-3 py-1.5 rounded-lg text-xs font-medium">Sent</button>
+      <button @click="f='failed'" :class="f==='failed'?'bg-rose-500/20 text-rose-300':'text-slate-400'" class="px-3 py-1.5 rounded-lg text-xs font-medium">Failed</button>
+    </div>
+  </div>
+  <div class="overflow-x-auto scrollbar-thin">
+    <table class="w-full text-sm">
+      <thead class="bg-slate-900/80 text-slate-400 text-xs uppercase tracking-wider">
+        <tr>
+          <th class="px-5 py-3 text-left font-medium">#</th>
+          <th class="px-5 py-3 text-left font-medium">Email</th>
+          <th class="px-5 py-3 text-left font-medium">Status</th>
+          <th class="px-5 py-3 text-left font-medium">Time</th>
+          <th class="px-5 py-3 text-left font-medium">Error</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-800/80">
+        {% for l in logs %}
+        <tr class="hover:bg-slate-800/30"
+            x-show="(!q || '{{ l.email|e }}'.toLowerCase().includes(q.toLowerCase())) && (f==='all' || f==='{{ l.status }}')">
+          <td class="px-5 py-2.5 text-slate-500 font-mono text-xs">{{ loop.index }}</td>
+          <td class="px-5 py-2.5 text-slate-200 font-mono text-xs">{{ l.email }}</td>
+          <td class="px-5 py-2.5">
+            <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium
+              {% if l.status == 'sent' %}bg-emerald-500/15 text-emerald-300{% else %}bg-rose-500/15 text-rose-300{% endif %}">
+              {{ l.status }}
+            </span>
+          </td>
+          <td class="px-5 py-2.5 text-slate-400 text-xs whitespace-nowrap">{{ l.sent_at }}</td>
+          <td class="px-5 py-2.5 text-rose-400 text-xs truncate max-w-md">{{ l.error or '' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="px-5 py-16 text-center text-slate-500">No log entries.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

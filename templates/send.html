@@ -1,23 +1,283 @@
 {% extends "base.html" %}
+{% block title %}New Campaign · Mailer Pro{% endblock %}
 {% block content %}
-<h1>Send Email Campaign</h1>
-<form method="POST" enctype="multipart/form-data">
-    <h2>Subject</h2>
-    <input type="text" name="subject" value="{{ subject }}" placeholder="Email subject..."><br>
-    
-    <h2>Email List</h2>
-    <textarea name="emails" rows="10" placeholder="Enter emails, one per line...">{{ emails_list }}</textarea><br>
-    
-    <h2>Plain Text (Optional)</h2>
-    <textarea name="plain_text" rows="5" placeholder="Text version of the email...">{{ plain_text }}</textarea><br>
-    
-    <h2>HTML Template</h2>
-    <textarea name="html_content" rows="20" placeholder="Enter HTML here...">{{ html_content }}</textarea><br>
-    
-    <h2>Attachments (Assets)</h2>
-    <input type="file" name="attachments" multiple><br>
-    <p>Select files to attach. They will be uploaded to the 'assets' folder and attached to the email.</p>
-    
-    <button type="submit">Start Sending</button>
-</form>
+<div x-data="sendApp()" x-init="init()">
+  <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-8">
+    <div>
+      <h1 class="text-2xl md:text-3xl font-bold text-white tracking-tight">New campaign</h1>
+      <p class="text-slate-400 mt-1 text-sm">Compose, validate and send your outreach in one place.</p>
+    </div>
+    <div class="flex items-center gap-2">
+      <button type="button" @click="openTemplates=true"
+        class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-800/80 hover:bg-slate-800 text-slate-200 text-sm font-medium border border-slate-700/60">
+        <i data-lucide="library" class="w-4 h-4"></i> Templates
+      </button>
+      <button type="button" @click="saveTemplate()"
+        class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-800/80 hover:bg-slate-800 text-slate-200 text-sm font-medium border border-slate-700/60">
+        <i data-lucide="save" class="w-4 h-4"></i> Save as template
+      </button>
+    </div>
+  </div>
+
+  <form method="POST" enctype="multipart/form-data" class="grid grid-cols-1 xl:grid-cols-5 gap-6">
+    <!-- LEFT: editor -->
+    <div class="xl:col-span-3 space-y-6">
+      <!-- Subject + recipients -->
+      <div class="rounded-2xl bg-slate-900/60 border border-slate-800/80 p-5 space-y-5">
+        <div>
+          <label class="text-xs uppercase tracking-wider text-slate-400 font-medium">Subject</label>
+          <input type="text" name="subject" x-model="subject" placeholder="Your email subject..."
+            class="mt-2 w-full px-3.5 py-2.5 rounded-lg bg-slate-800/60 border border-slate-700/60 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none text-slate-100 placeholder:text-slate-500">
+          <p class="text-xs text-slate-500 mt-1.5">Supports variables: <code class="text-brand-300">{{ '{{name}}' }}</code>, <code class="text-brand-300">{{ '{{email}}' }}</code></p>
+        </div>
+
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <label class="text-xs uppercase tracking-wider text-slate-400 font-medium">Recipients</label>
+            <div class="flex items-center gap-3 text-xs">
+              <span class="text-emerald-400 font-medium" x-text="validCount + ' valid'"></span>
+              <span class="text-rose-400 font-medium" x-text="invalidCount + ' invalid'" x-show="invalidCount>0"></span>
+              <button type="button" @click="validate()" class="text-brand-400 hover:text-brand-300 font-medium">Validate</button>
+            </div>
+          </div>
+          <textarea name="emails" x-model="emails" @input.debounce.500ms="countLines()" rows="8"
+            placeholder="One per line. Formats:&#10;john@example.com&#10;john@example.com,John Doe&#10;John Doe <john@example.com>"
+            class="w-full px-3.5 py-2.5 rounded-lg bg-slate-800/60 border border-slate-700/60 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none text-slate-100 placeholder:text-slate-500 font-mono text-sm"></textarea>
+        </div>
+      </div>
+
+      <!-- Editor tabs -->
+      <div class="rounded-2xl bg-slate-900/60 border border-slate-800/80 overflow-hidden">
+        <div class="flex items-center justify-between border-b border-slate-800/80 px-2">
+          <div class="flex">
+            <button type="button" @click="tab='html'" :class="tab==='html' ? 'text-white border-brand-500' : 'text-slate-400 border-transparent hover:text-slate-200'"
+              class="px-4 py-3 text-sm font-medium border-b-2 transition flex items-center gap-2">
+              <i data-lucide="code-2" class="w-4 h-4"></i> HTML
+            </button>
+            <button type="button" @click="tab='plain'" :class="tab==='plain' ? 'text-white border-brand-500' : 'text-slate-400 border-transparent hover:text-slate-200'"
+              class="px-4 py-3 text-sm font-medium border-b-2 transition flex items-center gap-2">
+              <i data-lucide="type" class="w-4 h-4"></i> Plain text
+            </button>
+            <button type="button" @click="tab='preview'" :class="tab==='preview' ? 'text-white border-brand-500' : 'text-slate-400 border-transparent hover:text-slate-200'"
+              class="px-4 py-3 text-sm font-medium border-b-2 transition flex items-center gap-2">
+              <i data-lucide="eye" class="w-4 h-4"></i> Preview
+            </button>
+          </div>
+          <div class="text-xs text-slate-500 pr-3" x-show="tab==='html' || tab==='plain'">
+            <span x-text="(tab==='html'?html:plain).length"></span> chars
+          </div>
+        </div>
+
+        <div x-show="tab==='html'">
+          <textarea name="html_content" x-model="html" rows="18"
+            class="w-full px-4 py-3 bg-slate-950/60 border-0 outline-none text-slate-200 font-mono text-sm resize-y"
+            placeholder="<html><body>Hi {{ '{{name}}' }}, ...</body></html>"></textarea>
+        </div>
+        <div x-show="tab==='plain'" x-cloak>
+          <textarea name="plain_text" x-model="plain" rows="18"
+            class="w-full px-4 py-3 bg-slate-950/60 border-0 outline-none text-slate-200 font-mono text-sm resize-y"
+            placeholder="Plain text version (fallback for clients that don't render HTML)"></textarea>
+        </div>
+        <div x-show="tab==='preview'" x-cloak class="bg-white">
+          <iframe :srcdoc="renderedPreview()" class="w-full h-[480px] border-0"></iframe>
+        </div>
+
+      </div>
+
+      <!-- Attachments -->
+      <div class="rounded-2xl bg-slate-900/60 border border-slate-800/80 p-5">
+        <label class="text-xs uppercase tracking-wider text-slate-400 font-medium">Attachments</label>
+        <div class="mt-2 border-2 border-dashed border-slate-700/60 rounded-xl p-6 hover:border-brand-500/60 transition relative">
+          <input type="file" name="attachments" multiple @change="filesChanged($event)"
+            class="absolute inset-0 opacity-0 cursor-pointer">
+          <div class="flex flex-col items-center text-center pointer-events-none">
+            <i data-lucide="upload-cloud" class="w-7 h-7 text-slate-500 mb-2"></i>
+            <p class="text-sm text-slate-300">Drop files or click to upload</p>
+            <p class="text-xs text-slate-500 mt-1">Images become inline, others get attached</p>
+          </div>
+        </div>
+        <div class="mt-3 flex flex-wrap gap-2" x-show="fileNames.length">
+          <template x-for="f in fileNames" :key="f">
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-800/80 border border-slate-700/60 text-xs text-slate-200">
+              <i data-lucide="paperclip" class="w-3 h-3"></i>
+              <span x-text="f"></span>
+            </span>
+          </template>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: actions -->
+    <div class="xl:col-span-2 space-y-6">
+      <div class="rounded-2xl bg-slate-900/60 border border-slate-800/80 p-5 sticky top-6">
+        <h3 class="font-semibold text-white mb-1">Ready to send</h3>
+        <p class="text-xs text-slate-400 mb-4">Review your campaign before launch.</p>
+
+        <dl class="space-y-3 text-sm">
+          <div class="flex items-center justify-between">
+            <dt class="text-slate-400">Recipients</dt>
+            <dd class="font-semibold text-white" x-text="validCount"></dd>
+          </div>
+          <div class="flex items-center justify-between">
+            <dt class="text-slate-400">Invalid lines</dt>
+            <dd class="font-semibold" :class="invalidCount>0?'text-rose-400':'text-slate-500'" x-text="invalidCount"></dd>
+          </div>
+          <div class="flex items-center justify-between">
+            <dt class="text-slate-400">Attachments</dt>
+            <dd class="font-semibold text-white" x-text="fileNames.length"></dd>
+          </div>
+          <div class="flex items-center justify-between">
+            <dt class="text-slate-400">Has HTML</dt>
+            <dd class="font-semibold" :class="html.trim().length?'text-emerald-400':'text-slate-500'" x-text="html.trim().length?'Yes':'No'"></dd>
+          </div>
+        </dl>
+
+        <button type="submit"
+          class="mt-5 w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-brand-500 hover:bg-brand-400 text-white font-semibold shadow-glow transition"
+          :disabled="validCount===0"
+          :class="validCount===0 ? 'opacity-50 cursor-not-allowed' : ''">
+          <i data-lucide="send-horizontal" class="w-4 h-4"></i>
+          Start campaign
+        </button>
+
+        <div class="mt-4 pt-4 border-t border-slate-800/80">
+          <p class="text-xs uppercase tracking-wider text-slate-400 font-medium mb-2">Send test email</p>
+          <div class="flex gap-2">
+            <input type="email" x-model="testEmail" placeholder="you@example.com"
+              class="flex-1 px-3 py-2 rounded-lg bg-slate-800/60 border border-slate-700/60 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none text-sm text-slate-100 placeholder:text-slate-500">
+            <button type="button" @click="sendTest()"
+              :disabled="testing"
+              class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium border border-slate-700/60 disabled:opacity-50">
+              <span x-show="!testing">Send</span>
+              <span x-show="testing" x-cloak>...</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </form>
+
+  <!-- Templates modal -->
+  <div x-show="openTemplates" x-cloak @keydown.escape.window="openTemplates=false"
+       class="fixed inset-0 z-40 bg-slate-950/80 backdrop-blur flex items-center justify-center p-4">
+    <div @click.outside="openTemplates=false" class="w-full max-w-2xl rounded-2xl bg-slate-900 border border-slate-800 shadow-2xl">
+      <div class="flex items-center justify-between px-5 py-4 border-b border-slate-800">
+        <h3 class="font-semibold text-white flex items-center gap-2"><i data-lucide="library" class="w-4 h-4"></i> Saved templates</h3>
+        <button type="button" @click="openTemplates=false" class="p-1.5 rounded-lg hover:bg-slate-800"><i data-lucide="x" class="w-4 h-4"></i></button>
+      </div>
+      <div class="max-h-[60vh] overflow-y-auto scrollbar-thin divide-y divide-slate-800">
+        <template x-for="t in templates" :key="t.id">
+          <div class="flex items-center justify-between px-5 py-3 hover:bg-slate-800/40">
+            <div class="min-w-0">
+              <p class="text-sm text-slate-100 font-medium truncate" x-text="t.name"></p>
+              <p class="text-xs text-slate-500 truncate" x-text="t.subject || '(no subject)'"></p>
+            </div>
+            <div class="flex items-center gap-1">
+              <button type="button" @click="loadTemplate(t.id)" class="px-3 py-1.5 rounded-lg bg-brand-500/15 text-brand-300 text-xs font-medium hover:bg-brand-500/25">Load</button>
+              <button type="button" @click="deleteTemplate(t.id)" class="p-1.5 rounded-lg hover:bg-rose-500/15 text-slate-400 hover:text-rose-400"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+            </div>
+          </div>
+        </template>
+        <div x-show="!templates.length" class="px-5 py-12 text-center text-slate-500 text-sm">
+          No templates yet. Click <strong class="text-slate-300">Save as template</strong> after composing one.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  function sendApp() {
+    return {
+      subject: {{ subject|tojson }},
+      emails: {{ emails_list|tojson }},
+      html: {{ html_content|tojson }},
+      plain: {{ plain_text|tojson }},
+      tab: 'html',
+      validCount: 0,
+      invalidCount: 0,
+      fileNames: [],
+      testEmail: '',
+      testing: false,
+      openTemplates: false,
+      templates: {{ templates_list|tojson }},
+
+      init() {
+        this.countLines();
+        this.$nextTick(() => lucide.createIcons());
+      },
+      countLines() {
+        const lines = (this.emails || '').split('\n').map(s => s.trim()).filter(Boolean);
+        const re = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
+        let v = 0, iv = 0;
+        const seen = new Set();
+        for (const line of lines) {
+          let addr = line;
+          if (line.includes('<') && line.includes('>')) {
+            const m = line.match(/<([^>]+)>/); if (m) addr = m[1].trim();
+          } else if (line.includes(',')) addr = line.split(',')[0].trim();
+          else if (line.includes(';')) addr = line.split(';')[0].trim();
+          if (re.test(addr) && !seen.has(addr.toLowerCase())) { seen.add(addr.toLowerCase()); v++; }
+          else iv++;
+        }
+        this.validCount = v; this.invalidCount = iv;
+      },
+      async validate() {
+        const r = await fetch('/api/validate_emails', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ text: this.emails })
+        });
+        const d = await r.json();
+        this.validCount = d.valid_count; this.invalidCount = d.invalid_count;
+        if (d.invalid_count) toast(d.invalid_count + ' invalid line(s) found', 'warn');
+        else toast('All ' + d.valid_count + ' emails are valid', 'success');
+      },
+      filesChanged(e) { this.fileNames = Array.from(e.target.files).map(f => f.name); },
+      renderedPreview() {
+        const sample = (this.emails || '').split('\n')[0]?.split(/[,;<]/)[0]?.trim() || 'preview@example.com';
+        const name = sample.split('@')[0];
+        return (this.html || '<p style="color:#888;padding:24px">No HTML to preview</p>')
+          .replaceAll('{{name}}', name).replaceAll('{{email}}', sample);
+      },
+      async sendTest() {
+        if (!this.testEmail) { toast('Enter test email', 'warn'); return; }
+        this.testing = true;
+        try {
+          const r = await fetch('/api/test_send', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ to: this.testEmail, subject: this.subject, html: this.html, plain: this.plain })
+          });
+          const d = await r.json();
+          if (d.ok) toast('Test email sent', 'success');
+          else toast('Test failed: ' + (d.error || 'unknown'), 'error');
+        } catch(e) { toast('Network error', 'error'); }
+        this.testing = false;
+      },
+      async saveTemplate() {
+        const name = prompt('Template name:');
+        if (!name) return;
+        const r = await fetch('/api/templates', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ name, subject: this.subject, html: this.html, plain: this.plain })
+        });
+        if (r.ok) {
+          toast('Template saved', 'success');
+          const list = await fetch('/api/templates'); this.templates = await list.json();
+        }
+      },
+      async loadTemplate(id) {
+        const r = await fetch('/api/templates/' + id); const d = await r.json();
+        this.subject = d.subject || ''; this.html = d.html || ''; this.plain = d.plain || '';
+        this.openTemplates = false;
+        toast('Template loaded', 'success');
+      },
+      async deleteTemplate(id) {
+        if (!confirm('Delete this template?')) return;
+        await fetch('/api/templates/' + id, { method:'DELETE' });
+        this.templates = this.templates.filter(t => t.id !== id);
+        toast('Template deleted', 'success');
+      }
+    };
+  }
+</script>
 {% endblock %}

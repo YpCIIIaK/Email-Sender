@@ -1,26 +1,124 @@
 {% extends "base.html" %}
+{% block title %}Settings · Mailer Pro{% endblock %}
 {% block content %}
-<h1>Settings</h1>
-<form method="POST">
-    <h2>SMTP Settings</h2>
-    <label>SMTP Server: <input type="text" name="smtp_server" value="{{ config.get('smtp_server', 'smtp.gmail.com') }}"></label><br>
-    <label>SMTP Port: <input type="number" name="smtp_port" value="{{ config.get('smtp_port', 587) }}"></label><br>
-    <label>Sender Email: <input type="email" name="sender_email" value="{{ config.get('sender_email', '') }}"></label><br>
-    <label>Default Subject: <input type="text" name="subject" value="{{ config.get('subject', 'Hello') }}"></label><br>
-    <label>Password: <input type="password" name="sender_password" value="{{ config.get('sender_password', '') }}"></label><br>
-    
-    <h2>IMAP Settings</h2>
-    <label>IMAP Server: <input type="text" name="imap_server" value="{{ config.get('imap_server', 'imap.gmail.com') }}"></label><br>
-    
-    <h2>AI & Notifications</h2>
-    <label>OpenRouter API Key: <input type="text" name="openrouter_key" value="{{ config.get('openrouter_key', '') }}"></label><br>
-    <label>AI Model ID: <input type="text" name="ai_model" value="{{ config.get('ai_model', 'google/gemini-flash-1.5') }}" placeholder="e.g. inclusionai/r1t-2.6-lite:free"></label><br>
-    <label>Telegram Bot Token: <input type="text" name="telegram_token" value="{{ config.get('telegram_token', '') }}"></label><br>
-    <label>Telegram Chat ID: <input type="text" name="telegram_chat_id" value="{{ config.get('telegram_chat_id', '') }}"></label><br>
-    
-    <h2>Other</h2>
-    <label>Delay (seconds): <input type="number" name="delay_seconds" value="{{ config.get('delay_seconds', 10) }}"></label><br><br>
-    
-    <button type="submit">Save Settings</button>
-</form>
+<div x-data="{ showPass:false }">
+  <div class="mb-8">
+    <h1 class="text-2xl md:text-3xl font-bold text-white tracking-tight">Settings</h1>
+    <p class="text-slate-400 mt-1 text-sm">Configure SMTP, IMAP, AI classification and notifications.</p>
+  </div>
+
+  <form method="POST" class="space-y-6 max-w-4xl">
+    <!-- SMTP -->
+    <section class="rounded-2xl bg-slate-900/60 border border-slate-800/80 p-6">
+      <div class="flex items-center gap-3 mb-5">
+        <div class="w-9 h-9 rounded-lg bg-brand-500/10 text-brand-400 flex items-center justify-center">
+          <i data-lucide="send" class="w-4 h-4"></i>
+        </div>
+        <div>
+          <h2 class="font-semibold text-white">Outgoing mail (SMTP)</h2>
+          <p class="text-xs text-slate-400">How your emails are sent</p>
+        </div>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {% macro field(label, name, value, type='text', placeholder='') %}
+        <label class="block">
+          <span class="text-xs uppercase tracking-wider text-slate-400 font-medium">{{ label }}</span>
+          <input type="{{ type }}" name="{{ name }}" value="{{ value }}" placeholder="{{ placeholder }}"
+            class="mt-2 w-full px-3.5 py-2.5 rounded-lg bg-slate-800/60 border border-slate-700/60 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none text-slate-100 placeholder:text-slate-500 text-sm">
+        </label>
+        {% endmacro %}
+
+        {{ field('SMTP Server', 'smtp_server', config.get('smtp_server', 'smtp.gmail.com')) }}
+        {{ field('SMTP Port', 'smtp_port', config.get('smtp_port', 587), 'number') }}
+        {{ field('Sender Email', 'sender_email', config.get('sender_email', ''), 'email') }}
+        {{ field('Default Subject', 'subject', config.get('subject', 'Hello')) }}
+
+        <label class="block md:col-span-2">
+          <span class="text-xs uppercase tracking-wider text-slate-400 font-medium">App Password</span>
+          <div class="mt-2 relative">
+            <input :type="showPass ? 'text' : 'password'" name="sender_password" value="{{ config.get('sender_password', '') }}"
+              class="w-full px-3.5 py-2.5 pr-10 rounded-lg bg-slate-800/60 border border-slate-700/60 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none text-slate-100 text-sm">
+            <button type="button" @click="showPass=!showPass" class="absolute right-2 top-2 p-1.5 text-slate-400 hover:text-slate-200">
+              <i :data-lucide="showPass ? 'eye-off' : 'eye'" class="w-4 h-4"></i>
+            </button>
+          </div>
+          <p class="text-xs text-slate-500 mt-1.5">For Gmail use an <a class="text-brand-400 hover:underline" target="_blank" href="https://support.google.com/accounts/answer/185833">app password</a>.</p>
+        </label>
+      </div>
+    </section>
+
+    <!-- IMAP -->
+    <section class="rounded-2xl bg-slate-900/60 border border-slate-800/80 p-6">
+      <div class="flex items-center gap-3 mb-5">
+        <div class="w-9 h-9 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
+          <i data-lucide="inbox" class="w-4 h-4"></i>
+        </div>
+        <div>
+          <h2 class="font-semibold text-white">Incoming mail (IMAP)</h2>
+          <p class="text-xs text-slate-400">For reading replies</p>
+        </div>
+      </div>
+      {{ field('IMAP Server', 'imap_server', config.get('imap_server', 'imap.gmail.com')) }}
+    </section>
+
+    <!-- AI -->
+    <section class="rounded-2xl bg-slate-900/60 border border-slate-800/80 p-6">
+      <div class="flex items-center gap-3 mb-5">
+        <div class="w-9 h-9 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center">
+          <i data-lucide="sparkles" class="w-4 h-4"></i>
+        </div>
+        <div>
+          <h2 class="font-semibold text-white">AI classification</h2>
+          <p class="text-xs text-slate-400">OpenRouter for reply analysis</p>
+        </div>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {{ field('OpenRouter API Key', 'openrouter_key', config.get('openrouter_key', ''), 'password', 'sk-or-...') }}
+        {{ field('AI Model', 'ai_model', config.get('ai_model', 'google/gemini-flash-1.5'), 'text', 'provider/model') }}
+      </div>
+    </section>
+
+    <!-- Telegram -->
+    <section class="rounded-2xl bg-slate-900/60 border border-slate-800/80 p-6">
+      <div class="flex items-center gap-3 mb-5">
+        <div class="w-9 h-9 rounded-lg bg-sky-500/10 text-sky-400 flex items-center justify-center">
+          <i data-lucide="bell" class="w-4 h-4"></i>
+        </div>
+        <div>
+          <h2 class="font-semibold text-white">Notifications</h2>
+          <p class="text-xs text-slate-400">Telegram alerts for positive leads</p>
+        </div>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {{ field('Telegram Bot Token', 'telegram_token', config.get('telegram_token', ''), 'password') }}
+        {{ field('Telegram Chat ID', 'telegram_chat_id', config.get('telegram_chat_id', '')) }}
+      </div>
+    </section>
+
+    <!-- Other -->
+    <section class="rounded-2xl bg-slate-900/60 border border-slate-800/80 p-6">
+      <div class="flex items-center gap-3 mb-5">
+        <div class="w-9 h-9 rounded-lg bg-slate-500/10 text-slate-300 flex items-center justify-center">
+          <i data-lucide="sliders" class="w-4 h-4"></i>
+        </div>
+        <div>
+          <h2 class="font-semibold text-white">Sending behavior</h2>
+        </div>
+      </div>
+      <label class="block max-w-xs">
+        <span class="text-xs uppercase tracking-wider text-slate-400 font-medium">Delay between emails (seconds)</span>
+        <input type="number" name="delay_seconds" value="{{ config.get('delay_seconds', 10) }}" min="0"
+          class="mt-2 w-full px-3.5 py-2.5 rounded-lg bg-slate-800/60 border border-slate-700/60 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none text-slate-100 text-sm">
+        <p class="text-xs text-slate-500 mt-1.5">Lower delays may trigger rate limits on your provider.</p>
+      </label>
+    </section>
+
+    <div class="flex items-center justify-end gap-2">
+      <a href="/" class="px-4 py-2.5 rounded-lg text-slate-300 hover:bg-slate-800 text-sm font-medium">Cancel</a>
+      <button type="submit" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-brand-500 hover:bg-brand-400 text-white text-sm font-semibold shadow-glow">
+        <i data-lucide="check" class="w-4 h-4"></i> Save settings
+      </button>
+    </div>
+  </form>
+</div>
 {% endblock %}

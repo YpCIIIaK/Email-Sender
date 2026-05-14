@@ -1,24 +1,144 @@
 {% extends "base.html" %}
+{% block title %}Replies · Mailer Pro{% endblock %}
 {% block content %}
-<h1>Replies</h1>
-<table>
-    <tr>
-        <th>ID</th>
-        <th>From</th>
-        <th>Subject</th>
-        <th>AI Status</th>
-        <th>Date</th>
-        <th>Body Preview</th>
-    </tr>
-    {% for reply in replies %}
-    <tr>
-        <td>{{ reply[0] }}</td>
-        <td>{{ reply[2] }}</td>
-        <td>{{ reply[3] }}</td>
-        <td><strong>{{ reply[4] }}</strong></td>
-        <td>{{ reply[5] }}</td>
-        <td>{{ reply[4][:100] }}...</td>
-    </tr>
-    {% endfor %}
-</table>
+<div x-data="repliesApp()" x-init="init()">
+  <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-8">
+    <div>
+      <h1 class="text-2xl md:text-3xl font-bold text-white tracking-tight">Replies</h1>
+      <p class="text-slate-400 mt-1 text-sm">AI-classified incoming responses from your prospects.</p>
+    </div>
+    <a href="/check_replies" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-500 hover:bg-brand-400 text-white text-sm font-semibold shadow-glow">
+      <i data-lucide="refresh-cw" class="w-4 h-4"></i> Check inbox now
+    </a>
+  </div>
+
+  <!-- Filters -->
+  <div class="flex flex-col md:flex-row md:items-center gap-3 mb-5">
+    <div class="relative flex-1">
+      <i data-lucide="search" class="w-4 h-4 absolute left-3 top-2.5 text-slate-500"></i>
+      <input x-model="q" placeholder="Search sender or subject..." class="w-full pl-9 pr-3 py-2 rounded-lg bg-slate-900/60 border border-slate-800 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none text-sm placeholder:text-slate-500">
+    </div>
+    <div class="flex items-center gap-2 overflow-x-auto">
+      <template x-for="f in filters" :key="f.id">
+        <button @click="filter=f.id"
+          :class="filter===f.id ? f.activeClass : 'bg-slate-900/60 text-slate-300 border-slate-800 hover:bg-slate-800'"
+          class="px-3 py-2 rounded-lg text-xs font-medium border whitespace-nowrap flex items-center gap-1.5">
+          <span class="w-1.5 h-1.5 rounded-full" :class="f.dot"></span>
+          <span x-text="f.label"></span>
+          <span x-text="counts[f.id] || 0" class="ml-1 opacity-70"></span>
+        </button>
+      </template>
+    </div>
+  </div>
+
+  <!-- Grid -->
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+    <template x-for="r in filteredReplies()" :key="r.id">
+      <div class="rounded-2xl bg-slate-900/60 border border-slate-800/80 p-5 hover:border-slate-700 transition cursor-pointer flex flex-col"
+           @click="openReply(r.id)">
+        <div class="flex items-start justify-between gap-2 mb-3">
+          <div class="min-w-0">
+            <p class="font-semibold text-white truncate" x-text="r.sender_email"></p>
+            <p class="text-xs text-slate-500 mt-0.5" x-text="r.date"></p>
+          </div>
+          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium shrink-0"
+            :class="{
+              'bg-emerald-500/15 text-emerald-300': r.ai_status==='positive',
+              'bg-rose-500/15 text-rose-300': r.ai_status==='negative',
+              'bg-amber-500/15 text-amber-300': r.ai_status==='ooo',
+              'bg-slate-700/40 text-slate-400': !['positive','negative','ooo'].includes(r.ai_status)
+            }">
+            <span x-text="r.ai_status || 'unknown'"></span>
+          </span>
+        </div>
+        <p class="text-sm text-slate-200 font-medium mb-2 line-clamp-2" x-text="r.subject || '(no subject)'"></p>
+        <p class="text-xs text-slate-400 line-clamp-3 flex-1" x-text="(r.body || '').slice(0, 200)"></p>
+        <div class="mt-3 pt-3 border-t border-slate-800/80 flex items-center justify-between">
+          <span class="text-xs text-slate-500">#<span x-text="r.id"></span></span>
+          <button @click.stop="deleteReply(r.id)" class="p-1 rounded-md text-slate-500 hover:text-rose-400 hover:bg-rose-500/10">
+            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+          </button>
+        </div>
+      </div>
+    </template>
+  </div>
+
+  <div x-show="!filteredReplies().length" class="rounded-2xl bg-slate-900/40 border border-slate-800/80 px-5 py-16 text-center text-slate-500">
+    <i data-lucide="inbox" class="w-8 h-8 mx-auto mb-3 opacity-50"></i>
+    <p>No replies match.</p>
+  </div>
+
+  <!-- Modal -->
+  <div x-show="selected" x-cloak @keydown.escape.window="selected=null"
+       class="fixed inset-0 z-40 bg-slate-950/80 backdrop-blur flex items-center justify-center p-4">
+    <div @click.outside="selected=null" class="w-full max-w-3xl rounded-2xl bg-slate-900 border border-slate-800 shadow-2xl flex flex-col max-h-[85vh]">
+      <div class="flex items-start justify-between px-6 py-4 border-b border-slate-800">
+        <div class="min-w-0">
+          <p class="text-xs text-slate-400" x-text="selected && selected.date"></p>
+          <h3 class="font-semibold text-white truncate" x-text="selected && (selected.subject || '(no subject)')"></h3>
+          <p class="text-sm text-slate-400 truncate mt-0.5" x-text="selected && selected.sender_email"></p>
+        </div>
+        <button @click="selected=null" class="p-1.5 rounded-lg hover:bg-slate-800"><i data-lucide="x" class="w-4 h-4"></i></button>
+      </div>
+      <div class="flex-1 overflow-y-auto scrollbar-thin px-6 py-5">
+        <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium mb-4"
+          :class="selected && {
+            'bg-emerald-500/15 text-emerald-300': selected.ai_status==='positive',
+            'bg-rose-500/15 text-rose-300': selected.ai_status==='negative',
+            'bg-amber-500/15 text-amber-300': selected.ai_status==='ooo',
+            'bg-slate-700/40 text-slate-400': selected && !['positive','negative','ooo'].includes(selected.ai_status)
+          }">
+          AI: <span x-text="selected && (selected.ai_status || 'unknown')"></span>
+        </span>
+        <pre class="whitespace-pre-wrap text-sm text-slate-200 font-sans leading-relaxed" x-text="selected && selected.body"></pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  function repliesApp() {
+    return {
+      replies: {{ replies|tojson }},
+      q: '', filter: 'all', selected: null,
+      filters: [
+        { id:'all', label:'All', dot:'bg-slate-500', activeClass:'bg-slate-700 text-white border-slate-600' },
+        { id:'positive', label:'Positive', dot:'bg-emerald-400', activeClass:'bg-emerald-500/20 text-emerald-200 border-emerald-500/30' },
+        { id:'negative', label:'Negative', dot:'bg-rose-400', activeClass:'bg-rose-500/20 text-rose-200 border-rose-500/30' },
+        { id:'ooo', label:'Out of office', dot:'bg-amber-400', activeClass:'bg-amber-500/20 text-amber-200 border-amber-500/30' },
+      ],
+      init() {
+        // Map tuple rows to object if needed
+        this.replies = this.replies.map(r => Array.isArray(r) ? {
+          id: r[0], campaign_id: r[1], sender_email: r[2], subject: r[3], body: r[4], ai_status: r[5], date: r[6]
+        } : r);
+        this.$nextTick(()=>lucide.createIcons());
+      },
+      get counts() {
+        const c = { all: this.replies.length, positive:0, negative:0, ooo:0 };
+        for (const r of this.replies) { if (c[r.ai_status]!==undefined) c[r.ai_status]++; }
+        return c;
+      },
+      filteredReplies() {
+        const ql = this.q.toLowerCase();
+        return this.replies.filter(r => {
+          if (this.filter !== 'all' && r.ai_status !== this.filter) return false;
+          if (!ql) return true;
+          return (r.sender_email||'').toLowerCase().includes(ql) || (r.subject||'').toLowerCase().includes(ql);
+        });
+      },
+      async openReply(id) {
+        const r = await fetch('/api/reply/' + id);
+        this.selected = await r.json();
+        this.$nextTick(()=>lucide.createIcons());
+      },
+      async deleteReply(id) {
+        if (!confirm('Delete this reply?')) return;
+        await fetch('/api/reply/' + id, { method:'DELETE' });
+        this.replies = this.replies.filter(r => r.id !== id);
+        toast('Reply deleted', 'success');
+      }
+    }
+  }
+</script>
 {% endblock %}
