@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Send Email Campaign</h1>
+<form method="POST" enctype="multipart/form-data">
+    <h2>Subject</h2>
+    <input type="text" name="subject" value="{{ subject }}" placeholder="Email subject..."><br>
+    
+    <h2>Email List</h2>
+    <textarea name="emails" rows="10" placeholder="Enter emails, one per line...">{{ emails_list }}</textarea><br>
+    
+    <h2>Plain Text (Optional)</h2>
+    <textarea name="plain_text" rows="5" placeholder="Text version of the email...">{{ plain_text }}</textarea><br>
+    
+    <h2>HTML Template</h2>
+    <textarea name="html_content" rows="20" placeholder="Enter HTML here...">{{ html_content }}</textarea><br>
+    
+    <h2>Attachments (Assets)</h2>
+    <input type="file" name="attachments" multiple><br>
+    <p>Select files to attach. They will be uploaded to the 'assets' folder and attached to the email.</p>
+    
+    <button type="submit">Start Sending</button>
+</form>
+{% endblock %}

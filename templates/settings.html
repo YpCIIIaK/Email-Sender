@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Settings</h1>
+<form method="POST">
+    <h2>SMTP Settings</h2>
+    <label>SMTP Server: <input type="text" name="smtp_server" value="{{ config.get('smtp_server', 'smtp.gmail.com') }}"></label><br>
+    <label>SMTP Port: <input type="number" name="smtp_port" value="{{ config.get('smtp_port', 587) }}"></label><br>
+    <label>Sender Email: <input type="email" name="sender_email" value="{{ config.get('sender_email', '') }}"></label><br>
+    <label>Default Subject: <input type="text" name="subject" value="{{ config.get('subject', 'Hello') }}"></label><br>
+    <label>Password: <input type="password" name="sender_password" value="{{ config.get('sender_password', '') }}"></label><br>
+    
+    <h2>IMAP Settings</h2>
+    <label>IMAP Server: <input type="text" name="imap_server" value="{{ config.get('imap_server', 'imap.gmail.com') }}"></label><br>
+    
+    <h2>AI & Notifications</h2>
+    <label>OpenRouter API Key: <input type="text" name="openrouter_key" value="{{ config.get('openrouter_key', '') }}"></label><br>
+    <label>AI Model ID: <input type="text" name="ai_model" value="{{ config.get('ai_model', 'google/gemini-flash-1.5') }}" placeholder="e.g. inclusionai/r1t-2.6-lite:free"></label><br>
+    <label>Telegram Bot Token: <input type="text" name="telegram_token" value="{{ config.get('telegram_token', '') }}"></label><br>
+    <label>Telegram Chat ID: <input type="text" name="telegram_chat_id" value="{{ config.get('telegram_chat_id', '') }}"></label><br>
+    
+    <h2>Other</h2>
+    <label>Delay (seconds): <input type="number" name="delay_seconds" value="{{ config.get('delay_seconds', 10) }}"></label><br><br>
+    
+    <button type="submit">Save Settings</button>
+</form>
+{% endblock %}

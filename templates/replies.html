@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Replies</h1>
+<table>
+    <tr>
+        <th>ID</th>
+        <th>From</th>
+        <th>Subject</th>
+        <th>AI Status</th>
+        <th>Date</th>
+        <th>Body Preview</th>
+    </tr>
+    {% for reply in replies %}
+    <tr>
+        <td>{{ reply[0] }}</td>
+        <td>{{ reply[2] }}</td>
+        <td>{{ reply[3] }}</td>
+        <td><strong>{{ reply[4] }}</strong></td>
+        <td>{{ reply[5] }}</td>
+        <td>{{ reply[4][:100] }}...</td>
+    </tr>
+    {% endfor %}
+</table>
+{% endblock %}

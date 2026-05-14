@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Dashboard</h1>
+<h2>Campaign History</h2>
+<table>
+    <tr>
+        <th>ID</th>
+        <th>Subject</th>
+        <th>Total</th>
+        <th>Success</th>
+        <th>Failed</th>
+        <th>Date</th>
+    </tr>
+    {% for camp in campaigns %}
+    <tr>
+        <td>{{ camp[0] }}</td>
+        <td>{{ camp[1] }}</td>
+        <td>{{ camp[2] }}</td>
+        <td>{{ camp[3] }}</td>
+        <td>{{ camp[4] }}</td>
+        <td>{{ camp[5] }}</td>
+    </tr>
+    {% endfor %}
+</table>
+{% endblock %}
