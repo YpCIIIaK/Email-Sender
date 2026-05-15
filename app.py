@@ -5,6 +5,7 @@ import json
 import time
 import os
 import re
+import socket
 import sqlite3
 import threading
 from email.mime.multipart import MIMEMultipart
@@ -118,7 +119,38 @@ def render_template_vars(text, recipient):
             .replace('{{Name}}', name.capitalize() if name else ''))
 
 
+def check_domain_exists(email_addr):
+    """Check if the recipient domain has MX records (can receive email).
+       Only MX records matter — A/AAAA records don't mean email works.
+    """
+    try:
+        domain = email_addr.split('@')[1].lower().strip()
+        if not domain:
+            return False
+        import socket as _sock
+        _sock.setdefaulttimeout(3)
+        try:
+            import dns.resolver
+            try:
+                answers = dns.resolver.resolve(domain, 'MX', lifetime=3)
+                return len(answers) > 0
+            except dns.resolver.NoAnswer:
+                return False
+            except dns.resolver.NXDOMAIN:
+                return False
+            except Exception:
+                return False  # Any DNS error = domain likely invalid
+        except ImportError:
+            return True  # Can't check, let SMTP decide
+    except Exception:
+        return True
+
+
 def send_email_sync(config, recipient, html_content, plain_text, attachments_dir=None, attach_files=False):
+    # Quick DNS pre-check to skip obviously invalid domains
+    if not check_domain_exists(recipient['email']):
+        return False, "Domain not found (DNS check failed)"
+
     try:
         host_val = config.get('smtp_server', 'smtp.gmail.com')
         port_val = int(config.get('smtp_port', 587))
@@ -133,30 +165,64 @@ def send_email_sync(config, recipient, html_content, plain_text, attachments_dir
         msg['To'] = recipient['email']
         msg['Subject'] = render_template_vars(config.get('subject', 'No Subject'), recipient)
 
-        alternative = MIMEMultipart('alternative')
-        msg.attach(alternative)
-
         html_personal = render_template_vars(html_content, recipient) if html_content else ''
         plain_personal = render_template_vars(plain_text, recipient) if plain_text else ''
 
         # Generate plain text from HTML if only HTML is provided
         if html_personal and not plain_personal:
-            import re
-            # Remove style tags and content
-            text = re.sub(r'<style[^>]*>.*?</style>', '', html_personal, flags=re.DOTALL)
-            # Remove HTML tags
-            text = re.sub(r'<[^>]+>', '', text)
-            # Replace common entities
-            text = text.replace('&nbsp;', ' ').replace('<', '<').replace('>', '>').replace('&', '&')
-            plain_personal = text.strip()
+            try:
+                from bs4 import BeautifulSoup
+                soup = BeautifulSoup(html_personal, 'html.parser')
+                # Remove script and style elements
+                for script_or_style in soup(['script', 'style']):
+                    script_or_style.decompose()
+                text = soup.get_text()
+                # Clean up whitespace
+                lines = (line.strip() for line in text.splitlines())
+                text = '\n'.join(line for line in lines if line)
+                plain_personal = text.strip()
+            except ImportError:
+                # Fallback to regex if bs4 is not installed
+                import re
+                text = re.sub(r'<style[^>]*>.*?</style>', '', html_personal, flags=re.DOTALL)
+                text = re.sub(r'<[^>]+>', '', text)
+                text = text.replace('&nbsp;', ' ').replace('<', '<').replace('>', '>').replace('&', '&')
+                plain_personal = text.strip()
 
+        # Embed plain text into HTML so it's visible in email clients
+        # Email clients (Gmail, Outlook) ignore separate text/plain part when HTML exists
         if html_personal and plain_personal:
+            # Escape plain text for safe HTML embedding
+            import html as html_mod
+            escaped_plain = html_mod.escape(plain_personal)
+            # Convert newlines to <br> for HTML display
+            escaped_plain = escaped_plain.replace('\n', '<br>')
+            # Inject plain text into <body> so it's visible (not after </html>)
+            plain_block = (
+                '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">'
+                '<tr><td style="padding:24px 24px 24px 24px; border-top:2px solid #e0e0e0;">'
+                '<div style="font-family:Arial,sans-serif; font-size:13px; color:#555; line-height:1.6; white-space:pre-wrap;">'
+                + escaped_plain +
+                '</div></td></tr></table>'
+            )
+            # Insert before </body> or at the end before </html> (case-insensitive, preserve original case)
+            import re as re_mod
+            if re_mod.search(r'</body>', html_personal, re_mod.IGNORECASE):
+                html_personal = re_mod.sub(r'(?i)</body>', plain_block + '\n</body>', html_personal, count=1)
+            elif re_mod.search(r'</html>', html_personal, re_mod.IGNORECASE):
+                html_personal = re_mod.sub(r'(?i)</html>', plain_block + '\n</html>', html_personal, count=1)
+            else:
+                html_personal = html_personal + '\n' + plain_block
+
+        # Use multipart/alternative: plain text first (fallback), HTML second (preferred)
+        # Both are embedded: plain text is visible inside HTML, and also available as fallback
+        alternative = MIMEMultipart('alternative')
+        msg.attach(alternative)
+
+        if plain_personal:
             alternative.attach(MIMEText(plain_personal, 'plain', 'utf-8'))
+        if html_personal:
             alternative.attach(MIMEText(html_personal, 'html', 'utf-8'))
-        elif html_personal:
-            alternative.attach(MIMEText(html_personal, 'html', 'utf-8'))
-        elif plain_personal:
-            alternative.attach(MIMEText(plain_personal, 'plain', 'utf-8'))
 
         if attach_files and attachments_dir and os.path.exists(attachments_dir):
             for filename in os.listdir(attachments_dir):
@@ -175,9 +241,34 @@ def send_email_sync(config, recipient, html_content, plain_text, attachments_dir
                     part['Content-Disposition'] = f'attachment; filename="{filename}"'
                     msg.attach(part)
 
-        server.send_message(msg)
+        # Use sendmail instead of send_message to detect rejected recipients
+        # sendmail returns a dict of rejected addresses
+        rejected = server.sendmail(
+            config.get('sender_email', ''),
+            [recipient['email']],
+            msg.as_string()
+        )
         server.quit()
+
+        if rejected:
+            # SMTP server rejected the recipient (e.g. domain not found, user unknown)
+            error_details = str(rejected)
+            return False, f"Recipient rejected: {error_details}"
+
         return True, None
+    except smtplib.SMTPRecipientsRefused as e:
+        # All recipients were refused
+        return False, f"All recipients refused: {e}"
+    except smtplib.SMTPSenderRefused as e:
+        return False, f"Sender refused: {e}"
+    except smtplib.SMTPDataError as e:
+        return False, f"Data error: {e}"
+    except smtplib.SMTPConnectError as e:
+        return False, f"Connection error: {e}"
+    except smtplib.SMTPAuthenticationError as e:
+        return False, f"Auth error: {e}"
+    except smtplib.SMTPException as e:
+        return False, f"SMTP error: {e}"
     except Exception as e:
         return False, str(e)
 
@@ -189,6 +280,146 @@ def latest_campaign_id():
     row = c.fetchone()
     conn.close()
     return row['id'] if row else None
+
+
+def detect_bounces():
+    """Check inbox for bounce/NDR messages and update email_log from 'sent' to 'failed'."""
+    if not os.path.exists('config.json'):
+        return
+    try:
+        config = get_config()
+        host_val = config.get('imap_server', 'imap.gmail.com')
+        mail = imaplib.IMAP4_SSL(host_val)
+        mail.login(config.get('sender_email', ''), config.get('sender_password', ''))
+        mail.select('inbox')
+
+        # Search for bounce messages (unseen)
+        status, messages = mail.search(None, 'UNSEEN')
+        if status != 'OK':
+            mail.close()
+            mail.logout()
+            return
+
+        camp_id = latest_campaign_id()
+        if not camp_id:
+            mail.close()
+            mail.logout()
+            return
+
+        # Get all sent emails from the latest campaign (to match bounced addresses)
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("SELECT email FROM email_log WHERE campaign_id=? AND status='sent'", (camp_id,))
+        sent_emails = [row['email'] for row in c.fetchall()]
+        conn.close()
+
+        if not sent_emails:
+            mail.close()
+            mail.logout()
+            return
+
+        bounced_recipients = []
+
+        for msg_id in messages[0].split():
+            status, msg_data = mail.fetch(msg_id, '(RFC822)')
+            for response_part in msg_data:
+                if isinstance(response_part, tuple):
+                    msg = email.message_from_bytes(response_part[1])
+                    subject = (msg['subject'] or '').lower()
+                    sender = (msg['from'] or '').lower()
+                    body = ""
+
+                    # Get plain text body
+                    if msg.is_multipart():
+                        for part in msg.walk():
+                            if part.get_content_type() == "text/plain":
+                                payload = part.get_payload(decode=True)
+                                if payload:
+                                    body = payload.decode('utf-8', errors='ignore')
+                                break
+                    else:
+                        payload = msg.get_payload(decode=True)
+                        if payload:
+                            body = payload.decode('utf-8', errors='ignore')
+
+                    body_lower = body.lower()
+
+                    # Detect bounce/NDR messages
+                    is_bounce = False
+                    bounce_keywords = [
+                        'mail delivery failed', 'delivery failure', 'undelivered',
+                        'undeliverable', 'returned mail', 'bounce',
+                        'не доставлено', 'адрес не найден', 'домен не найден',
+                        'mail delivery system', 'postmaster', 'mailer-daemon',
+                        'delivery status notification', 'failure notice',
+                        'message could not be delivered', 'recipient rejected'
+                    ]
+                    sender_keywords = ['mailer-daemon', 'postmaster', 'mail delivery']
+
+                    # Check subject and body for bounce indicators
+                    for kw in bounce_keywords:
+                        if kw in subject or kw in body_lower:
+                            is_bounce = True
+                            break
+
+                    # Check sender
+                    for kw in sender_keywords:
+                        if kw in sender:
+                            is_bounce = True
+                            break
+
+                    if not is_bounce:
+                        continue
+
+                    # Extract bounced email from body
+                    # Common patterns: "Original-Recipient: user@domain.com"
+                    # or just the email address appearing in the body
+                    found_bounce = set()
+                    for sent_email in sent_emails:
+                        # Check if this sent email is mentioned in the bounce message
+                        if sent_email.lower() in body_lower or sent_email.lower() in subject:
+                            found_bounce.add(sent_email)
+
+                    bounced_recipients.extend(found_bounce)
+
+        mail.close()
+        mail.logout()
+
+        # Update database: mark bounced emails as 'failed'
+        if bounced_recipients:
+            bounced_recipients = list(set(bounced_recipients))  # deduplicate
+            conn = get_db()
+            c = conn.cursor()
+            for bounced_email in bounced_recipients:
+                c.execute(
+                    "UPDATE email_log SET status='failed', error='Bounce detected (delivery failed)' "
+                    "WHERE campaign_id=? AND email=? AND status='sent'",
+                    (camp_id, bounced_email)
+                )
+            conn.commit()
+
+            # Update campaign stats
+            c.execute(
+                "SELECT COUNT(*) AS cnt FROM email_log WHERE campaign_id=? AND status='sent'",
+                (camp_id,)
+            )
+            new_sent = c.fetchone()['cnt']
+            c.execute(
+                "SELECT COUNT(*) AS cnt FROM email_log WHERE campaign_id=? AND status='failed'",
+                (camp_id,)
+            )
+            new_failed = c.fetchone()['cnt']
+            c.execute(
+                "UPDATE campaigns SET successful=?, failed=? WHERE id=?",
+                (new_sent, new_failed, camp_id)
+            )
+            conn.commit()
+            conn.close()
+
+            print(f"Bounce detection: {len(bounced_recipients)} email(s) marked as failed")
+
+    except Exception as e:
+        print(f"Bounce detection error: {e}")
 
 
 def check_replies_thread():
@@ -616,6 +847,12 @@ def replies():
 def check_replies():
     threading.Thread(target=check_replies_thread, daemon=True).start()
     return redirect(url_for('replies'))
+
+
+@app.route('/check_bounces')
+def check_bounces():
+    threading.Thread(target=detect_bounces, daemon=True).start()
+    return redirect(url_for('index'))
 
 
 if __name__ == '__main__':
